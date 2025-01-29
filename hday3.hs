@@ -20,7 +20,7 @@ import Data.Array.Unboxed
   ,assocs
   )
 
--- We use bool to represent bit value
+-- We use Bool to represent a binary digit
 type Report = UArray (Int, Int) Bool
 
 printSolution :: Show a => String -> a -> IO ()
@@ -131,16 +131,15 @@ rating cmp report = foldr f report (reverse [1..xsup])
          (one, zero) = countZeroAndOne (getX x acc)
 
 
--- select all "lines" (y) where (report ! (x,y)) == b)
+-- selects all "lines" (y) where (report ! (x,y)) == b)
 -- This is somewhat tricky
 select :: Bool -> Int -> Report -> Report
 select b x report = array ((1, 1), (xsup, ysup)) ls'
   where
     ((_,_), (xsup, _)) = bounds report
-    as = assocs report
     -- first, we collect all the y where the (report ! (x,y)) == b
     ys =  [y
-          |((x',y), b') <- as
+          |((x',y), b') <- assocs report
           ,x' == x
           ,b' == b
           ]
