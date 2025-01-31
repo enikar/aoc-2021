@@ -44,7 +44,6 @@ import Data.Attoparsec.ByteString.Char8
   )
 
 type Coord = (Int, Int)
-type Grid = [(Int, Coord)]
 data Board = Board
   {rows :: IntMap Int -- number of occupied cases in a row
   ,cols :: IntMap Int -- number of occupied cases in a column
@@ -127,7 +126,7 @@ playDraw d board = case M.lookup d (grid board) of
         Nothing -> (M.insert n 1 occ, 1)
         Just x  -> (M.insert n (x+1) occ, x+1)
 
--- sumGrid sums up all values of unmarked case.
+-- sumGrid sums up all values of unmarked cases.
 sumGrid :: Board -> Int
 sumGrid board = M.foldlWithKey' f 0 (grid board)
   where
@@ -138,27 +137,11 @@ sumGrid board = M.foldlWithKey' f 0 (grid board)
 
 -- Parsing stuff
 getDatas :: String -> IO ([Int], [Board])
-getDatas filename = do
-  (draws, grids) <- parseDatas <$> BC.readFile filename
-  let boards = map makeBoard grids
-  pure (draws, boards)
+getDatas filename = parseDatas <$> BC.readFile filename
 
--- To map numbers to their coordinates, we assume there are
--- no repetitions of a number inside a grid.
--- This is the case. We can check this, the grid's size of
--- each board should be equal to 25.
-makeBoard :: Grid -> Board
-makeBoard g =
-  Board {rows = M.empty
-        ,cols = M.empty
-        ,grid = M.fromList g
-        ,unMarked = S.fromList (map snd g)
-        ,hasWon = False
-        }
-
-parseDatas :: ByteString -> ([Int], [Grid])
+parseDatas :: ByteString -> ([Int], [Board])
 parseDatas str =
-  either error
+  either error -- to escape quickly when the parsing is wrong
          id
          (parseOnly parseGame str)
 
@@ -166,18 +149,18 @@ parseDatas str =
 -- parseGame = do
 --   numbers <- decimal `sepBy1'` char ','
 --   void (string "\n\n")
---   grids <- parseGrid `sepBy1'` string "\n\n"
+--   grids <- parseBoard `sepBy1'` string "\n\n"
 --   pure (numbers, grids)
 
 -- Alternative version using Applicative, just for fun!
-parseGame :: Parser ([Int], [Grid])
+parseGame :: Parser ([Int], [Board])
 parseGame =
   liftA2 (,)
          (decimal `sepBy1'` char ',' <* string "\n\n")
-         (parseGrid `sepBy1'` string "\n\n")
+         (parseBoard `sepBy1'` string "\n\n")
 
-parseGrid :: Parser Grid
-parseGrid = makeGrid <$> parseRow `sepBy1'` char '\n'
+parseBoard :: Parser Board
+parseBoard = makeBoard <$> parseRow `sepBy1'` char '\n'
 
 parseRow :: Parser [Int]
 parseRow =
@@ -186,8 +169,21 @@ parseRow =
 
 -- Indices begin at one, not zero. As well, that doesn't matter
 -- since we don't use this information.
-makeGrid :: [[Int]] -> Grid
-makeGrid lss = [(v, (x, y))
-                |(y, xs) <- zip  [1..] lss
-                ,(x, v) <- zip [1..] xs
-                ]
+makeBoard :: [[Int]] -> Board
+makeBoard lss = board
+  where
+    g = [(v, (x, y))
+        |(y, xs) <- zip  [1..] lss
+        ,(x, v) <- zip [1..] xs
+        ]
+-- To map numbers to their coordinates, we assume there are
+-- no repetitions of a number inside a grid.
+-- This is the case. We can check this, the grid's size of
+-- each board should be equal to 25.
+    board =
+      Board {rows = M.empty
+            ,cols = M.empty
+            ,grid = M.fromList g
+            ,unMarked = S.fromList (map snd g)
+            ,hasWon = False
+            }
