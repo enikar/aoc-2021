@@ -1,21 +1,35 @@
--- AoC 2021, day 4, part1
+-- AoC 2021, day 4,
+
+-- depends: base, containers, attoparsec
+-- for attoparsec: array, bytestring, deepseq, ghc-prim,
+--                 scientific, text, transformers, containers
+-- for containers: array, deepseq, template-haskell
+
+-- solution inspired from:  https://github.com/MondayMorningHaskell/AdventOfCode/blob/main/src/Day4.hs
+-- It is exactly the same algorithm with these differences:
+--   - The solution is computed outside of IO.
+--   - We don't use monad-logger at all.
+--   - We use containers instead of unordered-containers, so we can use
+--     IntMap which are very efficient.
+--   - We use attoparsec instead of megaparsec.
+--   - We use foldr to loop and short-circuit when the solution
+--     is found
+--   - The dimensions of a Grid is harcoded to 5x5 (function playDraw)
 
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE ImportQualifiedPost #-}
+{-# LANGUAGE LambdaCase #-}
 
 {- HLINT ignore "Eta reduce" -}
 
-import Data.Maybe
-  (isNothing
-  ,isJust
-  ,catMaybes
+import Data.List
+  (find
+  ,partition
   )
-import Data.Array
-  (Array
-  ,elems
-  ,assocs
-  ,array
-  )
+import Data.IntMap.Strict (IntMap)
+import Data.IntMap.Strict qualified as M
+import Data.Set (Set)
+import Data.Set qualified as S
 import Control.Applicative (optional)
 import Data.ByteString (ByteString)
 import Data.ByteString.Char8 qualified as BC
@@ -29,113 +43,151 @@ import Data.Attoparsec.ByteString.Char8
   ,sepBy1'
   )
 
-type Grid = Array (Int, Int) (Maybe Int)
-type Bingo = ([Int], [Grid])
+type Coord = (Int, Int)
+type Grid = [(Int, Coord)]
+data Board = Board
+  {rows :: IntMap Int -- number of occupied cases in a row
+  ,cols :: IntMap Int -- number of occupied cases in a column
+  ,grid :: IntMap Coord  -- Map grid's numbers to their coordinates
+  ,unMarked :: Set Coord -- Set of coordinate not yet encounter
+  ,hasWon :: Bool        -- Is it a winning board
+  } deriving (Show)
+
+
+printSolution :: Show a => String -> Maybe a -> IO ()
+printSolution part sol =
+  let sol' = maybe "No solution found" show sol
+  in putStrLn (part <> ": " <> sol')
 
 main :: IO ()
 main = do
-  bingo <- getDatas "day4.txt"
-  printSolution "Part1" (part1 bingo)
-  --printSolution "Part2" (part2 bingo)
+  (draws, boards) <- getDatas "day4.txt"
+  -- we reverse draws, because we use foldr to short-circuit
+  let ds = reverse draws
+  printSolution "Part1" (part1 ds boards)
+  printSolution "Part2" (part2 ds boards)
 
--- part1 lays each draw number on each grid if relevant then checks each
--- grid if there is one with a row or column fully filled we compute the
--- sum of all unchecked box an multiply this with the last draw number.
-part1 :: Bingo -> Int
-part1 (draws, gs) = n * s
+-- part1 is straightforward. We stop when we encounter
+-- the first winner board.
+part1 :: [Int] -> [Board] -> Maybe Int
+part1 draws bs = getResult (foldr search (Nothing, bs) draws)
   where
-    s = sum (catMaybes (elems g))
-    -- We use foldr to short circuit, but we need to reverse draws
-    -- to evaluate each draw in the order they appear.
-    (n,g) = case foldr f (Nothing,gs) (reverse draws) of
-              (Just n', [g']) -> (n', g')
-              _               -> error "Error: Part1"
+    getResult = \case
+      (Nothing, _)     -> Nothing
+      (Just (n, b), _) -> Just (n * sumGrid b)
 
-    f d (p,grids)
-      |isJust p   = (p, grids)
-      |otherwise =
-       let grids' = next d grids
-       in case check grids' of
-         Just grid -> (Just d, [grid])
-         Nothing   -> (Nothing, grids')
+    search _ acc@(Nothing, []) = acc -- no solution
+    search _ acc@(Just _, _)   = acc -- short circuit
+    search d (v, boards)       =
+      let boards' = map (playDraw d) boards
+      in case find hasWon boards' of
+           Nothing -> (v, boards') -- continue to search
+           Just board -> (Just (d, board), []) -- found ther first winner
 
--- part2 determines the score of the last grid that wins instead of
--- the first as in part1. I'm stuck on this.
-part2 :: Bingo -> Int
-part2 = undefined
-
-check :: [Grid] -> Maybe Grid
-check grids = foldr f Nothing grids
+-- For part2, we end when there is no more looser boards, "we are
+-- sure" we found the last winner. (Well, not so sure…)
+-- Anyway this is sufficient for a solution for an AoC puzlle.
+part2 :: [Int] -> [Board] -> Maybe Int
+part2 draws bs = getResult (foldr search (Nothing, bs) draws)
   where
-    f _ (Just grid) = Just grid
-    f grid Nothing
-      | checkRows grid' || checkColumns grid' = Just grid
-      | otherwise                             = Nothing
-        where
-          grid' = assocs grid
+    getResult = \case
+      (Nothing, _)     -> Nothing
+      (Just (n, b), _) -> Just (n * sumGrid b)
 
-checkRows :: [((Int, Int), Maybe Int)] -> Bool
-checkRows grid = foldr f False [1..5]
+    search _ acc@(Nothing, []) = acc -- no solution
+    search _ acc@(Just _, _)   = acc -- short circuit
+    search d (v, boards)
+      |null loosers = (Just (d, head winners), []) -- found the last winner
+      |otherwise    = (v, loosers) -- continue with the remaining boards
+       where
+         boards' = map (playDraw d) boards
+         (winners, loosers) = partition hasWon boards'
+
+-- playDraw updates board if need
+playDraw :: Int -> Board -> Board
+playDraw d board = case M.lookup d (grid board) of
+  Nothing -> board -- Nothing to update
+  Just (c, r) -> board {rows = newRows
+                       ,cols = newCols
+                       ,unMarked = newUnMarked
+                       -- well, the dimensions of grids are hardcoded,
+                       -- it is somewhat ugly…
+                       ,hasWon = occRows == 5 || occCols == 5
+                       }
+    where
+      -- we found d on the grid so we update occupied
+      -- rows and columns
+      (newRows,occRows) = updateOcc (rows board) r
+      (newCols, occCols) = updateOcc (cols board) c
+      -- this coordinate is no longueur unMarked
+      newUnMarked = S.delete (c, r) (unMarked board)
+
+      -- To update rows and columns
+      updateOcc occ n = case M.lookup n occ of
+        Nothing -> (M.insert n 1 occ, 1)
+        Just x  -> (M.insert n (x+1) occ, x+1)
+
+-- sumGrid sums up all values of unmarked case.
+sumGrid :: Board -> Int
+sumGrid board = M.foldlWithKey' f 0 (grid board)
   where
-    f _ True = True
-    f r False = all isNothing [n | ((_, y), n) <- grid, y == r]
-
-checkColumns :: [((Int, Int), Maybe Int)] -> Bool
-checkColumns grid = foldr f False [1..5]
-  where
-    f _ True = True
-    f c False = all isNothing [n |((x, _), n) <- grid, x == c]
-
-next :: Int -> [Grid] -> [Grid]
-next n grids = map (fillGrid n) grids
-
-fillGrid :: Int -> Grid -> Grid
-fillGrid n grid = fmap f grid
-  where
-    f x | x == Just n = Nothing
-        | otherwise   = x
-
-printSolution :: Show a => String -> a -> IO ()
-printSolution part sol = putStrLn (part <> ": " <> show sol)
+    unmarked = unMarked board
+    f acc key pair
+      | pair `S.member` unmarked = acc + key
+      | otherwise                = acc
 
 -- Parsing stuff
-getDatas :: String -> IO Bingo
-getDatas filename = parseDatas <$> BC.readFile filename
+getDatas :: String -> IO ([Int], [Board])
+getDatas filename = do
+  (draws, grids) <- parseDatas <$> BC.readFile filename
+  let boards = map makeBoard grids
+  pure (draws, boards)
 
-parseDatas :: ByteString -> Bingo
+-- To map numbers to their coordinates, we assume there are
+-- no repetitions of a number inside a grid.
+-- This is the case. We can check this, the grid's size of
+-- each board. It should be equal to 25.
+makeBoard :: Grid -> Board
+makeBoard g =
+  Board {rows = M.empty
+        ,cols = M.empty
+        ,grid = M.fromList g
+        ,unMarked = S.fromList (map snd g)
+        ,hasWon = False
+        }
+
+parseDatas :: ByteString -> ([Int], [Grid])
 parseDatas str =
   either error
          id
-         (parseOnly parseBingo str)
+         (parseOnly parseGame str)
 
--- parseBingo :: Parser Bingo
--- parseBingo = do
+-- parseGame :: Parser ([Int], [Grid])
+-- parseGame = do
 --   numbers <- decimal `sepBy1'` char ','
 --   void (string "\n\n")
 --   grids <- parseGrid `sepBy1'` string "\n\n"
 --   pure (numbers, grids)
 
--- Using Applicative, just for fun!
-parseBingo :: Parser Bingo
-parseBingo =
+-- Alternative version using Applicative, just for fun!
+parseGame :: Parser ([Int], [Grid])
+parseGame =
   liftA2 (,)
          (decimal `sepBy1'` char ',' <* string "\n\n")
          (parseGrid `sepBy1'` string "\n\n")
 
 parseGrid :: Parser Grid
-parseGrid = buildGrid <$> parseRow `sepBy1'` char '\n'
+parseGrid = makeGrid <$> parseRow `sepBy1'` char '\n'
 
 parseRow :: Parser [Int]
 parseRow =
   optional (char ' ')
   *> decimal `sepBy1'` many1 (char ' ')
 
-buildGrid :: [[Int]] -> Grid
-buildGrid lss = array ((1,1), (xsup, ysup)) as
-  where
-    ysup = length lss
-    xsup = length (head lss)
-    as = [((x, y), Just v)
-         |(y, xs) <- zip  [1..] lss
-         ,(x, v) <- zip [1..] xs
-         ]
+-- Indices begin at one, not zero. As well, that doesn't matter
+-- since we don't use this information.
+makeGrid :: [[Int]] -> Grid
+makeGrid lss = [(v, (x, y))
+                |(y, xs) <- zip  [1..] lss
+                ,(x, v) <- zip [1..] xs
+                ]
