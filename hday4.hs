@@ -6,7 +6,7 @@
 -- for containers: array, deepseq, template-haskell
 
 -- solution inspired from:  https://github.com/MondayMorningHaskell/AdventOfCode/blob/main/src/Day4.hs
--- It is exactly the same algorithm with these differences:
+-- It is *exactly* the same algorithm with these differences:
 --   - The solution is computed outside of IO.
 --   - We don't use monad-logger at all.
 --   - We use containers instead of unordered-containers, so we can use
@@ -82,7 +82,7 @@ part1 draws bs = getResult (foldr search (Nothing, bs) draws)
       let boards' = map (playDraw d) boards
       in case find hasWon boards' of
            Nothing -> (v, boards') -- continue to search
-           Just board -> (Just (d, board), []) -- found ther first winner
+           Just board -> (Just (d, board), []) -- found the first winner
 
 -- For part2, we end when there is no more looser boards, "we are
 -- sure" we found the last winner. (Well, not so sure…)
@@ -146,7 +146,7 @@ getDatas filename = do
 -- To map numbers to their coordinates, we assume there are
 -- no repetitions of a number inside a grid.
 -- This is the case. We can check this, the grid's size of
--- each board. It should be equal to 25.
+-- each board should be equal to 25.
 makeBoard :: Grid -> Board
 makeBoard g =
   Board {rows = M.empty
