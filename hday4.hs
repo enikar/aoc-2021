@@ -14,7 +14,6 @@
 --   - We use attoparsec instead of megaparsec.
 --   - We use foldr to loop and short-circuit when the solution
 --     is found
---   - The dimensions of a Grid is harcoded to 5x5 (function playDraw)
 
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE ImportQualifiedPost #-}
@@ -45,11 +44,13 @@ import Data.Attoparsec.ByteString.Char8
 
 type Coord = (Int, Int)
 data Board = Board
-  {rows :: IntMap Int -- number of occupied cases in a row
+  {nrows :: Int -- number of rows in a board
+  ,ncols :: Int -- number of columns
+  ,rows :: IntMap Int -- number of occupied cases in a row
   ,cols :: IntMap Int -- number of occupied cases in a column
   ,grid :: IntMap Coord  -- Map grid's numbers to their coordinates
-  ,unMarked :: Set Coord -- Set of coordinate not yet encounter
-  ,hasWon :: Bool        -- Is it a winning board
+  ,unmarked :: Set Coord -- Set of coordinates not yet encounter
+  ,hasWon :: Bool        -- Is it a winning board?
   } deriving (Show)
 
 
@@ -77,15 +78,16 @@ part1 draws bs = getResult (foldr search (Nothing, bs) draws)
 
     search _ acc@(Nothing, []) = acc -- no solution
     search _ acc@(Just _, _)   = acc -- short circuit
-    search d (v, boards)       =
+    search d (_, boards)       =
       let boards' = map (playDraw d) boards
       in case find hasWon boards' of
-           Nothing -> (v, boards') -- continue to search
+           Nothing -> (Nothing, boards') -- continue to search
            Just board -> (Just (d, board), []) -- found the first winner
 
 -- For part2, we end when there is no more looser boards, "we are
--- sure" we found the last winner. (Well, not so sure…)
--- Anyway this is sufficient for a solution for an AoC puzlle.
+-- sure" we found the last winner. (Well, it is not so sure…)
+-- Anyway this is sufficient for a solution for an AoC puzlle
+-- because the game has be designed in a such way that it works.
 part2 :: [Int] -> [Board] -> Maybe Int
 part2 draws bs = getResult (foldr search (Nothing, bs) draws)
   where
@@ -93,33 +95,32 @@ part2 draws bs = getResult (foldr search (Nothing, bs) draws)
       (Nothing, _)     -> Nothing
       (Just (n, b), _) -> Just (n * sumGrid b)
 
-    search _ acc@(Nothing, []) = acc -- no solution
+    -- search _ acc@(Nothing, []) = acc -- no solution not reached
     search _ acc@(Just _, _)   = acc -- short circuit
-    search d (v, boards)
-      |null loosers = (Just (d, head winners), []) -- found the last winner
-      |otherwise    = (v, loosers) -- continue with the remaining boards
+    search d (_, boards)
+      |null loosers = (Just (d, head winners), []) -- found the last winner.
+      |otherwise    = (Nothing, loosers) -- continue with the remaining boards
        where
          boards' = map (playDraw d) boards
          (winners, loosers) = partition hasWon boards'
 
--- playDraw updates board if need
+-- playDraw updates board if needed
 playDraw :: Int -> Board -> Board
 playDraw d board = case M.lookup d (grid board) of
-  Nothing -> board -- Nothing to update
+  Nothing     -> board -- Nothing to update
   Just (c, r) -> board {rows = newRows
                        ,cols = newCols
-                       ,unMarked = newUnMarked
-                       -- well, the dimensions of grids are hardcoded,
-                       -- it is somewhat ugly…
-                       ,hasWon = occRows == 5 || occCols == 5
+                       ,unmarked = newUnmarked
+                       ,hasWon = occRows == nrows board
+                                 || occCols == ncols board
                        }
     where
       -- we found d on the grid so we update occupied
       -- rows and columns
-      (newRows,occRows) = updateOcc (rows board) r
+      (newRows, occRows) = updateOcc (rows board) r
       (newCols, occCols) = updateOcc (cols board) c
-      -- this coordinate is no longueur unMarked
-      newUnMarked = S.delete (c, r) (unMarked board)
+      -- this coordinate is no longer unmarked
+      newUnmarked = S.delete (c, r) (unmarked board)
 
       -- To update rows and columns
       updateOcc occ n = case M.lookup n occ of
@@ -130,9 +131,9 @@ playDraw d board = case M.lookup d (grid board) of
 sumGrid :: Board -> Int
 sumGrid board = M.foldlWithKey' f 0 (grid board)
   where
-    unmarked = unMarked board
+    unms = unmarked board
     f acc key pair
-      | pair `S.member` unmarked = acc + key
+      | pair `S.member` unms = acc + key
       | otherwise                = acc
 
 -- Parsing stuff
@@ -145,7 +146,7 @@ parseDatas str =
          id
          (parseOnly parseGame str)
 
--- parseGame :: Parser ([Int], [Grid])
+-- parseGame :: Parser ([Int], [Board])
 -- parseGame = do
 --   numbers <- decimal `sepBy1'` char ','
 --   void (string "\n\n")
@@ -181,9 +182,11 @@ makeBoard lss = board
 -- This is the case. We can check this, the grid's size of
 -- each board should be equal to 25.
     board =
-      Board {rows = M.empty
+      Board {nrows = length lss
+            ,ncols = length (head lss)
+            ,rows = M.empty
             ,cols = M.empty
             ,grid = M.fromList g
-            ,unMarked = S.fromList (map snd g)
+            ,unmarked = S.fromList (map snd g)
             ,hasWon = False
             }
