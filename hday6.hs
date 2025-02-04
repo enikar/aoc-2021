@@ -107,11 +107,8 @@ yaParseLine = unfoldM parsedDigit
       optionalChar
       pure n
 
-digits :: [Word8]
-digits = map charToWord8 ['0'..'9']
-
 isDigit :: Word8 -> Bool
-isDigit d = d `elem` digits
+isDigit d = d  - charToWord8 '0' <= 9
 
 digit :: Scanner (Maybe Int)
 digit = do
