@@ -3,25 +3,22 @@
 {-# LANGUAGE ImportQualifiedPost #-}
 
 {- HLINT ignore "Eta reduce" -}
+import System.IO (readFile')
 
-import Data.Word (Word8)
-
+import Data.Char (isDigit, digitToInt)
 import Data.List (foldl')
-import Data.Functor (($>))
-import Control.Monad.Loops (unfoldM)
 import Data.IntMap.Strict (IntMap)
 import Data.IntMap.Strict qualified as M
 
-import Data.ByteString (ByteString)
-import Data.ByteString.Char8 qualified as BC
-import Scanner
-  (Scanner
-  ,scanOnly
-  ,lookAhead
-  ,word8
-  ,decimal
+import Text.ParserCombinators.ReadP
+  (ReadP
+  ,eof
+  ,sepBy1
+  ,char
+  ,satisfy
+  ,optional
+  ,readP_to_S
   )
-
 -- we use an IntMap to count occurrences of different timers.
 type LanternFishes = IntMap Int
 
@@ -58,72 +55,23 @@ times n f x
 
 -- Parsing stuff
 getDatas :: String -> IO LanternFishes
-getDatas filename = parseDatas <$> BC.readFile filename
+getDatas filename = parseDatas <$> readFile' filename
 
-parseDatas :: ByteString -> LanternFishes
-parseDatas str =
-  either error
-         id
-         (scanOnly lanternFishes str)
-
-charToWord8 :: Char -> Word8
-charToWord8 = fromIntegral . fromEnum
-
-eol,comma :: Word8
-eol = charToWord8 '\n'
-comma = charToWord8 ','
+parseDatas :: String -> LanternFishes
+parseDatas str = case readP_to_S lanternFishes str of
+                   [(x, "")] -> x
+                   _         -> error "Can't parse."
 
 -- The parsing is simple. There is just one line of digits
 -- separated by comma.
-lanternFishes :: Scanner LanternFishes
-lanternFishes = buildMap <$> yaParseLine
+lanternFishes :: ReadP LanternFishes
+lanternFishes =
+  buildMap <$> (parseDigits <* optional (char '\n') <* eof)
 
--- recursive parser to collect the digits.
-parseLine :: Scanner [Int]
-parseLine = do
-  c <- lookAhead
-  case c of
-    Nothing            -> pure []
-    Just v |v == comma -> word8 v *> parseLine
-           |v == eol   -> word8 v $> []
-           |otherwise  -> do
-              d <- decimal
-              ns <- parseLine
-              pure (d:ns)
+parseDigits :: ReadP [Int]
+parseDigits =
+  map digitToInt <$> sepBy1 (satisfy isDigit) (char ',')
 
--- Alternative version using Control.Monad.Loops.unFoldM
--- With this one we parse digits separated by any characters.
--- while parseLine par decimal number separated by ',' or
--- '\n'.
--- In the two cases, we don't exactly parse the input string even
--- if they work.
-yaParseLine :: Scanner [Int]
-yaParseLine = unfoldM parsedDigit
-  where
-    -- Note: here (digit <* optionalChar) doesn't work.
-    -- We need a monad, due to the use of unfoldM.
-    parsedDigit = do
-      n <- digit
-      optionalChar
-      pure n
-
-isDigit :: Word8 -> Bool
-isDigit d = d  - charToWord8 '0' <= 9
-
-digit :: Scanner (Maybe Int)
-digit = do
-  c <- lookAhead
-  case c of
-    Just d |isDigit d -> word8 d
-                         $> Just (fromIntegral d - fromEnum '0')
-    _                 -> pure Nothing
-
-optionalChar :: Scanner ()
-optionalChar = do
-  c <- lookAhead
-  case c of
-    Nothing -> pure ()
-    Just v  -> word8 v $> ()
 
 buildMap :: [Int] -> LanternFishes
 buildMap ns = foldl' f M.empty ns
