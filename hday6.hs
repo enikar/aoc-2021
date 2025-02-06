@@ -1,6 +1,7 @@
 -- AoC 2021, day 6
 
 {-# LANGUAGE ImportQualifiedPost #-}
+{-# LANGUAGE PackageImports #-}
 
 {- HLINT ignore "Eta reduce" -}
 import System.IO (readFile')
@@ -12,7 +13,12 @@ import Data.Char
 import Data.List (foldl')
 import Data.IntMap.Strict (IntMap)
 import Data.IntMap.Strict qualified as M
-
+import Control.Monad.IO.Class (liftIO)
+import "mtl" Control.Monad.Except
+  (ExceptT
+  ,liftEither
+  ,runExceptT
+  )
 import Text.ParserCombinators.ReadP
   (ReadP
   ,eof
@@ -30,9 +36,12 @@ printSolution part sol = putStrLn (part <> ": " <> show sol)
 
 main :: IO ()
 main = do
-  fishes <- getDatas "day6.txt"
-  printSolution "Part1" (partx 80 fishes)
-  printSolution "Part2" (partx 256 fishes)
+  r <- runExceptT (getDatas "day6.txt")
+  case r of
+    Left e -> putStrLn ("Error: " <> e)
+    Right fishes -> do
+      printSolution "Part1" (partx 80 fishes)
+      printSolution "Part2" (partx 256 fishes)
 
 -- Since InMaps are Foldable, we can use sum to add
 -- all values to count lanternfishes.
@@ -57,15 +66,17 @@ times n f x
   |otherwise = times (n-1) f $! f x
 
 -- Parsing stuff
-getDatas :: String -> IO LanternFishes
-getDatas filename = parseDatas <$> readFile' filename
+getDatas :: String -> ExceptT String IO LanternFishes
+getDatas filename = do
+  str <- liftIO (readFile' filename)
+  liftEither (parseDatas str)
 
 -- The parsing is simple. There is just one line of digits
 -- separated by comma.
-parseDatas :: String -> LanternFishes
+parseDatas :: String -> Either String LanternFishes
 parseDatas str = case readP_to_S lanternFishes str of
-                   [(x, "")] -> x
-                   _         -> error "Can't parse."
+                   [(x, "")] -> Right x
+                   _         -> Left "Can't parse."
 
 lanternFishes :: ReadP LanternFishes
 lanternFishes =
@@ -74,7 +85,6 @@ lanternFishes =
 parseDigits :: ReadP [Int]
 parseDigits =
   map digitToInt <$> (satisfy isDigit `sepBy1`  char ',')
-
 
 buildMap :: [Int] -> LanternFishes
 buildMap ns = foldl' f M.empty ns
