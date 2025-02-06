@@ -5,7 +5,10 @@
 {- HLINT ignore "Eta reduce" -}
 import System.IO (readFile')
 
-import Data.Char (isDigit, digitToInt)
+import Data.Char
+  (isDigit
+  ,digitToInt
+  )
 import Data.List (foldl')
 import Data.IntMap.Strict (IntMap)
 import Data.IntMap.Strict qualified as M
@@ -57,20 +60,20 @@ times n f x
 getDatas :: String -> IO LanternFishes
 getDatas filename = parseDatas <$> readFile' filename
 
+-- The parsing is simple. There is just one line of digits
+-- separated by comma.
 parseDatas :: String -> LanternFishes
 parseDatas str = case readP_to_S lanternFishes str of
                    [(x, "")] -> x
                    _         -> error "Can't parse."
 
--- The parsing is simple. There is just one line of digits
--- separated by comma.
 lanternFishes :: ReadP LanternFishes
 lanternFishes =
   buildMap <$> (parseDigits <* optional (char '\n') <* eof)
 
 parseDigits :: ReadP [Int]
 parseDigits =
-  map digitToInt <$> sepBy1 (satisfy isDigit) (char ',')
+  map digitToInt <$> (satisfy isDigit `sepBy1`  char ',')
 
 
 buildMap :: [Int] -> LanternFishes
