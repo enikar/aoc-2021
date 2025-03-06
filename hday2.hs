@@ -40,21 +40,21 @@ main = do
   printSolution "Part2" (part2 instrs)
 
 part1 :: Instructions -> Int
-part1 instrs = getResult (foldl' f (0, 0) instrs)
+part1 instrs = x' * z'
   where
-    getResult (x,z) = x*z
+    (x',z') = foldl' reduce (0, 0) instrs
 
-    f (x, z) = \case
+    reduce (x, z) = \case
       Forward n -> (x+n, z)
       Down    n -> (x, z+n)
       Up      n -> (x, z-n)
 
 part2 :: Instructions -> Int
-part2 instrs = getResult (foldl' f (0, 0, 0) instrs)
+part2 instrs = x' * z'
   where
-    getResult (x, z, _) = x*z
+    (x', z', _) = foldl' reduce (0, 0, 0) instrs
 
-    f (x, z, a) = \case
+    reduce (x, z, a) = \case
         Forward n -> (x+n, z+n*a, a)
         Down    n -> (x, z, a+n)
         Up      n -> (x, z, a-n)
