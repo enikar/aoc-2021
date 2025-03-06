@@ -1,6 +1,8 @@
 -- AoC 2021, day 3
 
 -- Naive solution. It needs improvements.
+-- TODO: A version that uses Data.Map.Strict instead of UArray
+-- or even better, use hmatrix, their extractors are quite fast.
 
 {- HLINT ignore "Eta reduce" -}
 
@@ -52,22 +54,20 @@ main = do
   printSolution "Part1" (part1 report)
   printSolution "Part2" (part2 report)
 
-
 part1 :: Report -> Int
-part1 report = getResult (foldr f [] [1..xsup])
+part1 report = gamma * epsilon
   where
-    ((_, _), (xsup,_)) = bounds report
-    getResult gs = gamma * epsilon
-      where
-        gamma = fromBits gs
-        epsilon = complement gamma .&. (1 `shiftL` xsup - 1)
+    gamma = fromBits gs
+    epsilon = complement gamma .&. (1 `shiftL` xsup - 1)
 
+    ((_, _), (xsup,_)) = bounds report
+
+    gs = foldr f [] [1..xsup]
     f x acc
       | zero > one = 0 : acc
       | otherwise  = 1 : acc
         where
           (one, zero) = countZeroAndOne (getX x report)
-
 
 -- returns values of the column x
 getX :: Int -> Report -> [Bool]
