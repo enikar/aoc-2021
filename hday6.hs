@@ -34,12 +34,21 @@ type LanternFishes = IntMap Int
 printSolution :: Show a => String -> a -> IO ()
 printSolution part sol = putStrLn (part <> ": " <> show sol)
 
+-- main :: IO ()
+-- main = do
+--   r <- runExceptT (getDatas "day6.txt")
+--   case r of
+--     Left e -> putStrLn ("Error: " <> e)
+--     Right fishes -> do
+--       printSolution "Part1" (partx 80 fishes)
+--       printSolution "Part2" (partx 256 fishes)
+-- Alternative way to write main, nicer in my opinion.
 main :: IO ()
-main = do
-  r <- runExceptT (getDatas "day6.txt")
-  case r of
-    Left e -> putStrLn ("Error: " <> e)
-    Right fishes -> do
+main = runExceptT (getDatas "day6.txt") >>= either printError goOn
+  where
+    printError e = putStrLn ("Error: " <> e)
+
+    goOn fishes = do
       printSolution "Part1" (partx 80 fishes)
       printSolution "Part2" (partx 256 fishes)
 
@@ -70,6 +79,11 @@ getDatas :: String -> ExceptT String IO LanternFishes
 getDatas filename = do
   str <- liftIO (readFile' filename)
   liftEither (parseDatas str)
+
+-- Another way to write it:
+-- getDatas filename =
+--   liftIO (readFile' filename)
+--   >>= liftEither . parseDatas
 
 -- The parsing is simple. There is just one line of digits
 -- separated by comma.
